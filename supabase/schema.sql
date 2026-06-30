@@ -1,0 +1,122 @@
+-- ════════════════════════════════════════════
+-- LNJ COIFFURE — Schéma Base de Données Supabase
+-- À exécuter dans Supabase → SQL Editor → New query
+-- ════════════════════════════════════════════
+
+-- Table des transactions (chaque encaissement)
+create table transactions (
+  id           bigint generated always as identity primary key,
+  hairdresser  text not null,
+  date         date not null,
+  time         text not null,
+  items        jsonb not null,          -- [{name, price}, ...]
+  total        numeric(10,2) not null,
+  payment      text not null,            -- 'Espèces' | 'CB' | 'Chèque'
+  closed       boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
+-- Table des clôtures de journée (rapports verrouillés)
+create table closures (
+  id           bigint generated always as identity primary key,
+  hairdresser  text not null,
+  date         date not null,
+  date_label   text not null,
+  closed_at    text not null,
+  transactions jsonb not null,
+  total        numeric(10,2) not null,
+  cb           numeric(10,2) not null default 0,
+  especes      numeric(10,2) not null default 0,
+  cheque       numeric(10,2) not null default 0,
+  created_at   timestamptz not null default now()
+);
+
+-- Table des tarifs (catégories + prestations, modifiable par le gérant)
+create table tarifs (
+  id           text primary key default 'main', -- une seule ligne "main"
+  categories   jsonb not null,
+  updated_at   timestamptz not null default now()
+);
+
+-- Table des réglages (PIN gérant, etc.)
+create table settings (
+  id           text primary key default 'main',
+  pin          text not null default '1234',
+  updated_at   timestamptz not null default now()
+);
+
+-- Index pour accélérer les requêtes par coiffeuse + date
+create index idx_transactions_hairdresser_date on transactions (hairdresser, date);
+create index idx_closures_hairdresser_date on closures (hairdresser, date);
+
+-- ════════════════════════════════════════════
+-- ROW LEVEL SECURITY — accès public en lecture/écriture
+-- (app interne au salon, pas de système de comptes utilisateurs)
+-- ════════════════════════════════════════════
+alter table transactions enable row level security;
+alter table closures enable row level security;
+alter table tarifs enable row level security;
+alter table settings enable row level security;
+
+create policy "public access transactions" on transactions for all using (true) with check (true);
+create policy "public access closures"     on closures     for all using (true) with check (true);
+create policy "public access tarifs"       on tarifs       for all using (true) with check (true);
+create policy "public access settings"     on settings     for all using (true) with check (true);
+
+-- ════════════════════════════════════════════
+-- DONNÉES INITIALES
+-- ════════════════════════════════════════════
+insert into settings (id, pin) values ('main', '1234');
+
+insert into tarifs (id, categories) values ('main', '[
+  {"id":"d","lbl":"Dames","ico":"IconHeart","items":[
+    {"id":"d1","n":"Shampoing Brushing Court","p":26},
+    {"id":"d2","n":"Shampoing Brushing Mi-Long","p":30.5},
+    {"id":"d3","n":"Shampoing Brushing Long","p":32},
+    {"id":"d4","n":"Mise en Plis Court","p":25.5},
+    {"id":"d5","n":"Mise en Plis Mi-Long","p":27},
+    {"id":"d6","n":"Mise en Plis Long","p":31},
+    {"id":"d7","n":"Mousse","p":5},
+    {"id":"d8","n":"Coupe Complète","p":15},
+    {"id":"d9","n":"Coupe Entretien","p":13},
+    {"id":"d10","n":"Frange","p":6},
+    {"id":"d11","n":"Colo · Soin/Mousse/Brushing","p":61.5},
+    {"id":"d12","n":"Colo · Soin/Mousse/Mise en Plis","p":61},
+    {"id":"d13","n":"Perm · Soin/Mousse/Brushing","p":62},
+    {"id":"d14","n":"Perm · Soin/Mousse/Mise en Plis","p":61},
+    {"id":"d15","n":"Dose Supp Colo/Perm","p":5,"min":5,"max":15}
+  ]},
+  {"id":"h","lbl":"Hommes","ico":"IconUser","items":[
+    {"id":"h1","n":"Shampoing Coupe Coiffage","p":22.5},
+    {"id":"h2","n":"Coupe sans Shampoing","p":20},
+    {"id":"h3","n":"Entretien","p":14}
+  ]},
+  {"id":"e","lbl":"Enfants","ico":"IconStar","items":[
+    {"id":"e1","n":"Garçon – 11 ans","p":16},
+    {"id":"e2","n":"Garçon + 11 ans","p":18},
+    {"id":"e3","n":"Filles Court","p":25},
+    {"id":"e4","n":"Filles Mi-Long","p":30},
+    {"id":"e5","n":"Filles Long","p":32},
+    {"id":"e6","n":"Bébé","p":12,"min":12,"max":15}
+  ]},
+  {"id":"t","lbl":"Techniques","ico":"IconPalette","items":[
+    {"id":"t1","n":"Balayage","p":38,"min":38,"max":80},
+    {"id":"t2","n":"Bonnet","p":40.5},
+    {"id":"t3","n":"Papier","p":45,"min":45,"max":90},
+    {"id":"t4","n":"Service Sun","p":48,"min":48,"max":80},
+    {"id":"t5","n":"Mèche Bi-Color","p":46,"min":46,"max":90},
+    {"id":"t6","n":"Rege","p":37.5},
+    {"id":"t7","n":"Patine","p":13,"min":13,"max":26},
+    {"id":"t8","n":"Déco","p":45,"min":45,"max":90},
+    {"id":"t9","n":"Dose Supp Longueur","p":10,"min":10,"max":25}
+  ]},
+  {"id":"a","lbl":"Autres","ico":"IconSparkles","items":[
+    {"id":"a1","n":"Chignon sans Shampoing","p":40,"min":40,"max":60},
+    {"id":"a2","n":"Forfait Mariage","p":60,"min":60,"max":150},
+    {"id":"a3","n":"Nattage sans Shampoing","p":30,"min":30,"max":55},
+    {"id":"a4","n":"Shampoing + Séchage","p":19,"min":19,"max":25},
+    {"id":"a5","n":"Lotion / Mousse","p":5},
+    {"id":"a6","n":"Ampoule Anti Chute","p":6},
+    {"id":"a7","n":"Soin Profond Kératine","p":7}
+  ]}
+]');
