@@ -411,3 +411,22 @@ input[type=range] { width: 100%; margin-bottom: 7px; accent-color: var(--seconda
 @media (min-width: 768px) {
   .mobnav { display: none; }
 }
+
+/* ── ITEM STATES ── */
+.icard-incart {
+  background: var(--surface-container-low) !important;
+  border-color: var(--secondary) !important;
+  opacity: .65;
+  cursor: not-allowed !important;
+}
+.icard-incart:hover { box-shadow: none !important; }
+.icard-incart .icard-n { color: var(--on-surface-variant); }
+
+.icard-product {
+  border-color: var(--secondary-container) !important;
+  background: linear-gradient(135deg, var(--surface-container-lowest), var(--secondary-container)) !important;
+}
+.icard-product:hover {
+  border-color: var(--secondary) !important;
+  box-shadow: 0 2px 8px rgba(119,90,25,.12) !important;
+}
