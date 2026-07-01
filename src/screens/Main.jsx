@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IconArrowLeft, IconCashRegister, IconChartBar, IconScissors, IconReceipt } from '@tabler/icons-react'
-import CatBar from '../components/CatBar.jsx'
-import ItemsGrid from '../components/ItemsGrid.jsx'
-import Ticket from '../components/Ticket.jsx'
-import StatsView from '../components/StatsView.jsx'
+import CatBar          from '../components/CatBar.jsx'
+import ItemsGrid       from '../components/ItemsGrid.jsx'
+import Ticket          from '../components/Ticket.jsx'
+import StatsView       from '../components/StatsView.jsx'
 import PriceRangeModal from '../components/ui/PriceRangeModal.jsx'
-import SuccessOverlay from '../components/ui/SuccessOverlay.jsx'
-import Modal from '../components/ui/Modal.jsx'
+import ProductModal    from '../components/ui/ProductModal.jsx'
+import SuccessOverlay  from '../components/ui/SuccessOverlay.jsx'
+import Modal           from '../components/ui/Modal.jsx'
 import {
   getTarifs, addTransaction, getTxsForDate, markTxsClosed,
   addClosure, getDatesWithData, todayStr,
@@ -19,12 +20,13 @@ const isMob = () => window.innerWidth < 768
 
 export default function Main({ user, onBack }) {
   const [cats,        setCats]        = useState(DEFAULT_TARIFS)
-  const [catsLoading,  setCatsLoading] = useState(true)
+  const [catsLoading, setCatsLoading] = useState(true)
   const [activeCat,   setActiveCat]   = useState('d')
   const [cart,        setCart]        = useState([])
   const [tab,         setTab]         = useState('caisse')
   const [mobView,     setMobView]     = useState('caisse')
   const [rangeItem,   setRangeItem]   = useState(null)
+  const [productOpen, setProductOpen] = useState(false)
   const [success,     setSuccess]     = useState(null)
   const [cloModal,    setCloModal]    = useState(false)
   const [cloLoading,  setCloLoading]  = useState(false)
@@ -37,12 +39,11 @@ export default function Main({ user, onBack }) {
   const [datesData,  setDatesData]  = useState(new Set())
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Charger les tarifs depuis Supabase
   useEffect(() => {
     let cancelled = false
     getTarifs()
       .then(c => { if (!cancelled) setCats(c) })
-      .catch(() => { if (!cancelled) setErrMsg('Tarifs : connexion impossible, valeurs par défaut affichées.') })
+      .catch(() => { if (!cancelled) setCats(DEFAULT_TARIFS) })
       .finally(() => { if (!cancelled) setCatsLoading(false) })
     return () => { cancelled = true }
   }, [])
@@ -53,25 +54,32 @@ export default function Main({ user, onBack }) {
 
   useEffect(() => { refreshDates() }, [refreshDates])
 
-  // ── ITEM CLICK ──
   const handleItemClick = (item) => {
-    if (item.min !== undefined) setRangeItem(item)
-    else addToCart(item.n, item.p)
+    if (item.isProduct)          setProductOpen(true)
+    else if (item.min !== undefined) setRangeItem(item)
+    else                         addToCart(item.n, item.p)
   }
 
-  // ── CART ──
   const addToCart = (name, price) => {
+    if (cart.some(i => i.name === name)) return
     setCart(prev => [...prev, { id: Date.now() + Math.random(), name, price }])
     if (isMob()) setMobView('ticket')
   }
+
+  const addProductToCart = (productName, price) => {
+    const label = productName ? `Produit — ${productName}` : 'Produit'
+    setCart(prev => [...prev, { id: Date.now() + Math.random(), name: label, price }])
+    if (isMob()) setMobView('ticket')
+  }
+
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id))
   const clearCart      = ()   => setCart([])
 
-  // ── PAY ──
   const pay = async (method) => {
     if (!cart.length) return
     const total = cart.reduce((s, i) => s + i.price, 0)
     try {
+      setErrMsg('')
       await addTransaction({
         hairdresser: user, date: today, time: fmtTime(),
         items: cart.map(({ name, price }) => ({ name, price })),
@@ -82,16 +90,16 @@ export default function Main({ user, onBack }) {
       setTimeout(() => { setSuccess(null); if (isMob()) setMobView('caisse') }, 1800)
       refreshDates()
       setRefreshKey(k => k + 1)
-    } catch {
-      setErrMsg("Échec de l'enregistrement — vérifiez la connexion internet et réessayez.")
+    } catch (err) {
+      setErrMsg(`Échec de l'enregistrement (${err?.message || 'connexion Supabase'}). Vérifiez votre connexion internet.`)
     }
   }
 
-  // ── CLOTURE ──
   const doCloture = async () => {
     setCloLoading(true)
+    setErrMsg('')
     try {
-      const txs   = await getTxsForDate(user, today)
+      const txs = await getTxsForDate(user, today)
       if (!txs.length) { setCloLoading(false); setCloModal(false); return }
       const total = txs.reduce((s, t) => s + Number(t.total), 0)
       await markTxsClosed(txs.map(t => t.id))
@@ -107,24 +115,17 @@ export default function Main({ user, onBack }) {
       setTimeout(() => setSuccess(null), 1800)
       refreshDates()
       setRefreshKey(k => k + 1)
-    } catch {
-      setErrMsg('Échec de la clôture — réessayez.')
+    } catch (err) {
+      setErrMsg(`Échec de la clôture (${err?.message || 'connexion'}). Réessayez.`)
     } finally {
       setCloLoading(false)
     }
   }
 
-  // ── EXPORT PDF ──
   const handleExportPDF = (allTxs, closure) => {
-    generatePDF({
-      user,
-      dateStr: fmtDate(selDate),
-      transactions: allTxs,
-      closedAt: closure?.closedAt ?? null,
-    })
+    generatePDF({ user, dateStr: fmtDate(selDate), transactions: allTxs, closedAt: closure?.closedAt ?? null })
   }
 
-  // ── CALENDAR NAV ──
   const changeMonth = (dir) => {
     setCalMonth(prev => {
       let m = prev + dir, y = calYear
@@ -137,27 +138,23 @@ export default function Main({ user, onBack }) {
   const mobile = isMob()
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
          className={mobile ? 'main-mobile-pb' : ''}>
-
       <header className="hdr">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="hdr-back" onClick={onBack} aria-label="Retour"><IconArrowLeft size={20} /></button>
+          <button className="hdr-back" onClick={onBack}><IconArrowLeft size={20} /></button>
           <span className="hdr-logo">LNJ</span>
         </div>
-        <div className="hdr-user">
-          <div className="hdr-dot" />
-          <span>{user}</span>
-        </div>
+        <div className="hdr-user"><div className="hdr-dot" /><span>{user}</span></div>
         <div className="hdr-dt">
           {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </div>
       </header>
 
       {errMsg && (
-        <div className="err-banner" style={{ margin: '10px 16px 0' }}>
-          {errMsg}
-          <button onClick={() => setErrMsg('')} style={{ marginLeft: 'auto', fontWeight: 700 }}>×</button>
+        <div className="err-banner">
+          <span style={{ flex: 1 }}>{errMsg}</span>
+          <button onClick={() => setErrMsg('')} style={{ fontWeight: 700, fontSize: 16 }}>×</button>
         </div>
       )}
 
@@ -173,20 +170,16 @@ export default function Main({ user, onBack }) {
       )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
         {((!mobile && tab === 'caisse') || (mobile && mobView === 'caisse')) && (
           <>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <CatBar cats={cats} activeCat={activeCat} onSelect={setActiveCat} />
-              {catsLoading ? (
-                <div className="loading-screen"><div className="spinner" /><span>Chargement des tarifs…</span></div>
-              ) : (
-                <ItemsGrid cats={cats} activeCat={activeCat} onSelect={handleItemClick} />
-              )}
+              {catsLoading
+                ? <div className="loading-screen"><div className="spinner" /><span>Chargement…</span></div>
+                : <ItemsGrid cats={cats} activeCat={activeCat} onSelect={handleItemClick} cartItems={cart} />
+              }
             </div>
-            {!mobile && (
-              <Ticket cart={cart} onRemove={removeFromCart} onClear={clearCart} onPay={pay} />
-            )}
+            {!mobile && <Ticket cart={cart} onRemove={removeFromCart} onClear={clearCart} onPay={pay} />}
           </>
         )}
 
@@ -198,14 +191,10 @@ export default function Main({ user, onBack }) {
 
         {((!mobile && tab === 'stats') || (mobile && mobView === 'stats')) && (
           <StatsView
-            user={user}
-            selectedDate={selDate}
-            calYear={calYear} calMonth={calMonth}
-            datesWithData={datesData}
-            onSelectDate={setSelDate}
-            onChangeMonth={changeMonth}
-            onExportPDF={handleExportPDF}
-            onCloture={() => setCloModal(true)}
+            user={user} selectedDate={selDate}
+            calYear={calYear} calMonth={calMonth} datesWithData={datesData}
+            onSelectDate={setSelDate} onChangeMonth={changeMonth}
+            onExportPDF={handleExportPDF} onCloture={() => setCloModal(true)}
             refreshKey={refreshKey}
           />
         )}
@@ -219,9 +208,7 @@ export default function Main({ user, onBack }) {
             </button>
             <button className={`mnb${mobView === 'ticket' ? ' on' : ''}`} onClick={() => setMobView('ticket')}>
               <IconReceipt size={22} />
-              {cart.length > 0 && (
-                <span className="mnb-badge">{cart.length > 9 ? '9+' : cart.length}</span>
-              )}
+              {cart.length > 0 && <span className="mnb-badge">{cart.length > 9 ? '9+' : cart.length}</span>}
               <span>Ticket</span>
             </button>
             <button className={`mnb${mobView === 'stats' ? ' on' : ''}`} onClick={() => setMobView('stats')}>
@@ -232,16 +219,15 @@ export default function Main({ user, onBack }) {
       )}
 
       <PriceRangeModal item={rangeItem} onConfirm={addToCart} onClose={() => setRangeItem(null)} />
+      <ProductModal open={productOpen} onConfirm={addProductToCart} onClose={() => setProductOpen(false)} />
 
       <Modal open={cloModal} onClose={() => !cloLoading && setCloModal(false)}>
         <div className="modal-ttl">Clôturer la journée</div>
-        <div className="modal-sub">
-          {user} — cette action est définitive et irréversible.
-        </div>
+        <div className="modal-sub">{user} — cette action est définitive et irréversible.</div>
         <div className="modal-btns">
           <button className="mbtn" onClick={() => setCloModal(false)} disabled={cloLoading}>Annuler</button>
           <button className="mbtn dg" onClick={doCloture} disabled={cloLoading}>
-            {cloLoading ? 'Clôture…' : 'Confirmer'}
+            {cloLoading ? 'Clôture en cours…' : 'Confirmer'}
           </button>
         </div>
       </Modal>
