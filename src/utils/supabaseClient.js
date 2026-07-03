@@ -6,8 +6,8 @@ const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZi
 
 export const supabase = createClient(url, key, {
   auth: {
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
     persistSession: true,
-    autoRefreshToken: true,
+    autoRefreshToken: false,
   }
 })
