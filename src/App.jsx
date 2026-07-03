@@ -8,7 +8,7 @@ import Gerant   from './screens/Gerant.jsx'
 
 // ⚠️ Ton vrai Gmail ici
 const EMAILS_AUTORISES = [
-  'ton.email@gmail.com',
+  'sabrwassim@gmail.com',
 ]
 
 const emailAutorisé = (email) =>
