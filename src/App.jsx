@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './utils/supabaseClient.js'
-import Login     from './screens/Login.jsx'
-import Accueil   from './screens/Accueil.jsx'
-import PinLogin  from './screens/PinLogin.jsx'
-import Main      from './screens/Main.jsx'
-import Gerant    from './screens/Gerant.jsx'
+import Login    from './screens/Login.jsx'
+import Accueil  from './screens/Accueil.jsx'
+import PinLogin from './screens/PinLogin.jsx'
+import Main     from './screens/Main.jsx'
+import Gerant   from './screens/Gerant.jsx'
 
-// ⚠️ Remplace par ton vrai Gmail ici
+// ⚠️ Ton vrai Gmail ici
 const EMAILS_AUTORISES = [
-  'sabrwassim@gmail.com',
+  'ton.email@gmail.com',
 ]
+
+const emailAutorisé = (email) =>
+  EMAILS_AUTORISES.map(e => e.toLowerCase()).includes((email || '').toLowerCase())
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -18,33 +21,51 @@ export default function App() {
   const [refusé,  setRefusé]  = useState(false)
 
   useEffect(() => {
+    // Vérifie la session au démarrage (inclut le callback OAuth)
     supabase.auth.getSession().then(({ data }) => {
       const s = data.session
-      if (s && !EMAILS_AUTORISES.includes(s.user.email)) {
+      if (s && !emailAutorisé(s.user.email)) {
         supabase.auth.signOut()
         setRefusé(true)
         setSession(null)
       } else {
-        setSession(s)
+        setSession(s ?? null)
       }
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => {
-      if (s && !EMAILS_AUTORISES.includes(s.user.email)) {
-        supabase.auth.signOut()
-        setRefusé(true)
+
+    // Écoute les changements d'authentification
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_IN' && s) {
+        if (!emailAutorisé(s.user.email)) {
+          supabase.auth.signOut()
+          setRefusé(true)
+          setSession(null)
+        } else {
+          setRefusé(false)
+          setSession(s)
+          // Nettoie le hash OAuth de l'URL
+          if (window.location.hash) {
+            window.history.replaceState(null, '', window.location.pathname)
+          }
+        }
+      } else if (event === 'SIGNED_OUT') {
         setSession(null)
-      } else {
-        setSession(s)
       }
     })
+
     return () => listener.subscription.unsubscribe()
   }, [])
 
   const selectUser = (name) => { setUser(name); setScreen('main') }
   const goGerant   = ()     => setScreen('pin')
   const goBack     = ()     => setScreen('accueil')
-  const logout     = async () => { await supabase.auth.signOut(); setScreen('accueil') }
+  const logout     = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+    setScreen('accueil')
+  }
 
+  // Chargement initial
   if (session === undefined) {
     return (
       <div className="loading-screen">
@@ -54,6 +75,7 @@ export default function App() {
     )
   }
 
+  // Non connecté
   if (!session) {
     return (
       <>
@@ -71,6 +93,7 @@ export default function App() {
     )
   }
 
+  // Connecté → appli normale
   return (
     <>
       {screen === 'accueil' && <Accueil onSelectUser={selectUser} onGerant={goGerant} onLogout={logout} />}
