@@ -8,7 +8,7 @@ import Gerant    from './screens/Gerant.jsx'
 
 // ⚠️ Remplace par ton vrai Gmail ici
 const EMAILS_AUTORISES = [
-  'ton.email@gmail.com',
+  'sabrwassim@gmail.com',
 ]
 
 export default function App() {
